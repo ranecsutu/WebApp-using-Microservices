@@ -1,4 +1,4 @@
-module broker
+module github.com/ranecsutu/microservices/broker-service
 
 go 1.18
 
