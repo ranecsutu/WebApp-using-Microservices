@@ -1,5 +1,6 @@
 front-end/frontApp
 authentication-service/authApp
-broker-service/brokerApp
 project/db-data
 front-end/frontApp
+broker-service/brokerApp
+logger-service/loggerServiceApp
