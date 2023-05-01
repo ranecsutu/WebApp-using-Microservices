@@ -4,3 +4,5 @@ project/db-data
 front-end/frontApp
 broker-service/brokerApp
 logger-service/loggerServiceApp
+mail-service/mailerApp
+front-end/frontApp.exe
