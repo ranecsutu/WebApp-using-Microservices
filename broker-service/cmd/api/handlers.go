@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/ranecsutu/microservices/broker-service/event"
 )
 
 type RequestPayload struct {
@@ -52,7 +54,7 @@ func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
 	case "auth":
 		app.authenticate(w, requestPayload.Auth)
 	case "log":
-		app.logItem(w, requestPayload.Log)
+		app.logEventViaRabbit(w, requestPayload.Log)
 	case "mail":
 		app.sendMail(w, requestPayload.Mail)
 	default:
@@ -60,38 +62,38 @@ func (app *Config) HandleSubmission(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (app *Config) logItem(w http.ResponseWriter, entry LogPayload) {
-	jsonData, _ := json.MarshalIndent(entry, "", "\t")
+// func (app *Config) logItem(w http.ResponseWriter, entry LogPayload) {
+// 	jsonData, _ := json.MarshalIndent(entry, "", "\t")
 
-	logServiceURL := "http://logger-service/log"
+// 	logServiceURL := "http://logger-service/log"
 
-	request, err := http.NewRequest("POST", logServiceURL, bytes.NewBuffer(jsonData))
-	if err != nil {
-		app.errorJSON(w, err)
-		return
-	}
+// 	request, err := http.NewRequest("POST", logServiceURL, bytes.NewBuffer(jsonData))
+// 	if err != nil {
+// 		app.errorJSON(w, err)
+// 		return
+// 	}
 
-	request.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
-	response, err := client.Do(request)
-	if err != nil {
-		app.errorJSON(w, err)
-		return
-	}
-	defer response.Body.Close()
+// 	request.Header.Set("Content-Type", "application/json")
+// 	client := &http.Client{}
+// 	response, err := client.Do(request)
+// 	if err != nil {
+// 		app.errorJSON(w, err)
+// 		return
+// 	}
+// 	defer response.Body.Close()
 
-	// make sure we get back the correct status code
-	if response.StatusCode != http.StatusAccepted {
-		app.errorJSON(w, err)
-		return
-	}
+// 	// make sure we get back the correct status code
+// 	if response.StatusCode != http.StatusAccepted {
+// 		app.errorJSON(w, err)
+// 		return
+// 	}
 
-	var payload jsonResponse
-	payload.Error = false
-	payload.Message = "logged!"
+// 	var payload jsonResponse
+// 	payload.Error = false
+// 	payload.Message = "logged!"
 
-	app.writeJSON(w, http.StatusAccepted, payload)
-}
+// 	app.writeJSON(w, http.StatusAccepted, payload)
+// }
 
 func (app *Config) authenticate(w http.ResponseWriter, a AuthPayload) {
 	// create some json we'll send to the auth microservice
@@ -180,4 +182,39 @@ func (app *Config) sendMail(w http.ResponseWriter, msg MailPayload) {
 
 	app.writeJSON(w, http.StatusAccepted, payload)
 
+}
+
+// logEventViaRabbit logs an event using the logger-service. It makes the call by pushing the data to RabbitMQ.
+func (app *Config) logEventViaRabbit(w http.ResponseWriter, l LogPayload) {
+	err := app.pushToQueue(l.Name, l.Data)
+	if err != nil {
+		app.errorJSON(w, err)
+		return
+	}
+
+	var payload jsonResponse
+	payload.Error = false
+	payload.Message = "logged via RabbitMQ"
+
+	app.writeJSON(w, http.StatusAccepted, payload)
+}
+
+// pushToQueue pushes a message into RabbitMQ
+func (app *Config) pushToQueue(name, msg string) error {
+	emitter, err := event.NewEventEmitter(app.Rabbit)
+	if err != nil {
+		return err
+	}
+
+	payload := LogPayload{
+		Name: name,
+		Data: msg,
+	}
+
+	j, _ := json.MarshalIndent(&payload, "", "\t")
+	err = emitter.Push(string(j), "log.INFO")
+	if err != nil {
+		return err
+	}
+	return nil
 }
